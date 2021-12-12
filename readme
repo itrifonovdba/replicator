@@ -1,0 +1,58 @@
+
+This is replication wrapper over Oracle packages to run only on Oracle databases.
+For regular replication of tables from different database to destination.
+You can replicate data by conditions, by partitions , with remap tables and remap tablespaces . 
+Replicator  will automatically create the table on the target database. 
+You only need to create a replication task - insert a row into the replication control table "RPADMIN"."REPLICATOR_TABLES"
+and the job itself to start the replica at the time you need.
+
+I)
+Setup RPADMIN schema on destination database
+
+1 run users.sql on destination database  to create rpadmin schema on destination database.
+2 create all the necessary links from the database 
+  where you need to replicate the data and directed to those databases from which you need to download the data.
+  Please note, that link names must be specified in the setup table ("RPADMIN"."REPLICATOR_TABLES").
+  Usually the rpadmin scheme is also used to create a link from the repadmin schema to the source base. 
+  You must issue EXP_FULL_DATABASE rights to rpadmin on all source database and create session.
+3 run tables.sql in rpadmin schema to create all tables in destination database.
+4 
+run 
+RPADMIN_READ_REMOTE_DDL.ddl 
+REPLICATOR.ddl 
+to create replication core in destination .
+
+
+II)     Creation replication task
+So, to create replication task we have to add 1 row into the rpadmin.replicator_tables for each task 
+(please take a look REPLICATOR.ddl insert_data.sql  ):
+
+table_owner - schema name on source database
+table_name  - schema table name on source database
+partition_name - name of partition ( if exists ) 
+enabled  - 0 (disabled replication )   /  1  (enabled replication )
+filter - condition after where ( for example select * from table where serial >10 .  So you can put "serial > 10 " into filter field.
+refresh_time - the field is filled in by the system,  keep empty. Time of task refresh completition. 
+thread - thread number 1-99 
+remap_table - if you want to rename table 
+pk - not used currently 
+start_refresh_time - refresh start time.  The field is filled in by the system,  keep empty.
+source_database_link_name  - name in rpadmin schema of the database link where you need to get data
+
+ 
+III)     Creation replication job
+After task creation, please setup job for thread you've just created.
+Please note, multiple tables can be merged into a one thread or 1 big table - just separate thread/job.
+
+
+BEGIN
+  DBMS_SCHEDULER.create_job (
+    job_name        => 'RPADMIN.REPLICATION_JOB_1',
+    job_type        => 'PLSQL_BLOCK',
+    job_action      => 'begin RPADMIN.REPLICATOR.REPLICATOR_RUN(1);end;',  -- here we set job/thread number  from thread field in "RPADMIN"."REPLICATOR_TABLES"
+    start_date      =>  to_date('12-09-2020 00:01:00','DD-MM-YYYY HH24:MI:SS'),
+    repeat_interval => 'FREQ=WEEKLY;BYDAY=TUE,WED,THU,FRI,SAT,SUN; BYHOUR=0; BYMINUTE=1; BYSECOND=0;',
+    enabled         => TRUE);
+END;
+
+ 
